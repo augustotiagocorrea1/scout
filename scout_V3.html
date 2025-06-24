@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Scout de Erros - Tênis de Mesa</title>
+  <!-- Chart.js e plugin de data labels -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
+  <!-- jsPDF para exportar PDF -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <style>
+    /* Marca d'água no fundo */
+    body::before {
+      content: "";
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: url('logo gtt.jpg') center center no-repeat;
+      background-size: 300px;
+      opacity: 0.1;
+      z-index: -1;
+    }
+    body {
+      font-family: Arial, sans-serif;
+      text-align: center;
+      margin: 20px;
+    }
+    table {
+      width: 100%;
+      max-width: 700px;
+      margin: 20px auto;
+      border-collapse: collapse;
+    }
+    th, td {
+      border: 1px solid #333;
+      padding: 8px;
+      text-align: center;
+    }
+    td.contador {
+      cursor: pointer;
+      background-color: #f9f9f9;
+      font-size: 18px;
+    }
+    button {
+      margin: 8px;
+      padding: 8px 16px;
+      font-size: 14px;
+    }
+    #graficoContainer {
+      width: 100%;
+      max-width: 700px;
+      margin: 30px auto;
+    }
+    input[type="text"] {
+      padding: 8px;
+      width: calc(50% - 40px);
+      max-width: 300px;
+      margin: 8px;
+    }
+    #sugestao {
+      margin-top: 12px;
+      font-size: 16px;
+      font-weight: bold;
+      color: #333;
+    }
+  </style>
+</head>
+<body>
+  <h2>Scout de Erros - Finalizações</h2>
+  <div>
+    <input type="text" id="nomeAtleta" placeholder="Nome do Atleta">
+    <input type="text" id="clubeCidade" placeholder="Clube ou Cidade">
+  </div>
+  <!-- Botão para redefinir todos os contadores -->
+  <button onclick="resetCounters()">Redefinir Contadores</button>
+  <table>
+    <thead>
+      <tr>
+        <th>Fundamentos</th>
+        <th>Contador de Erros</th>
+        <th>Desfazer</th>
+      </tr>
+    </thead>
+    <tbody id="tabelaFundamentos"></tbody>
+  </table>
+  <button onclick="gerarGrafico()">Finalizar e Gerar Gráfico</button>
+  <button onclick="gerarPDF()">Salvar em PDF</button>
+  <div id="graficoContainer">
+    <canvas id="graficoErros"></canvas>
+    <!-- Botão para gerar sugestão tática -->
+    <div>
+      <button onclick="sugestaoTatica()">Gerar Sugestão Tática</button>
+    </div>
+    <div id="sugestao"></div>
+  </div>
+  <script>
+    // Registra plugin de data labels
+    Chart.register(ChartDataLabels);
+
+    const fundamentos = [
+      "SAQUE", "RECEPÇÃO COZINHADA", "RECEPÇÃO CHIQUITA", "RECEPÇÃO HARAL FH",
+      "ATAQUE FH DRIVE", "ATAQUE FH TOPSPIN", "ATAQUE BH DRIVE", "ATAQUE BH TOPSPIN",
+      "DEFESA/BLOQUEIO", "DEFESA/KATO", "COZINHADA", "SMASH", "RALLY"
+    ];
+    const contadores = Array(fundamentos.length).fill(0);
+    const countCells = [];
+    const tabela = document.getElementById("tabelaFundamentos");
+
+    // Monta tabela
+    fundamentos.forEach((fund, idx) => {
+      const row = tabela.insertRow();
+      const fundCell = row.insertCell();
+      const countCell = row.insertCell();
+      const undoCell = row.insertCell();
+      fundCell.textContent = fund;
+      countCell.textContent = "0";
+      countCell.className = "contador";
+      countCell.onclick = () => {
+        contadores[idx]++;
+        countCell.textContent = contadores[idx];
+      };
+      countCells.push(countCell);
+      const btnUndo = document.createElement("button");
+      btnUndo.textContent = "Desfazer";
+      btnUndo.onclick = () => {
+        if (contadores[idx] > 0) {
+          contadores[idx]--;
+          countCell.textContent = contadores[idx];
+        }
+      };
+      undoCell.appendChild(btnUndo);
+    });
+
+    let chartInstance;
+    function gerarGrafico() {
+      const ctx = document.getElementById("graficoErros").getContext("2d");
+      if (chartInstance) chartInstance.destroy();
+      chartInstance = new Chart(ctx, {
+        type: "bar",
+        data: {
+          labels: fundamentos,
+          datasets: [{
+            label: "Erros",
+            data: contadores,
+            backgroundColor: fundamentos.map((_, i) =>
+              `hsl(${i * 360 / fundamentos.length}, 70%, 60%)`
+            )
+          }]
+        },
+        options: {
+          responsive: true,
+          scales: {
+            y: { beginAtZero: true, ticks: { stepSize: 1 } }
+          },
+          plugins: {
+            legend: { display: false },
+            title: { display: true, text: "Distribuição de Erros por Fundamento" },
+            datalabels: {
+              anchor: "end",
+              align: "top",
+              formatter: value => value > 0 ? value : "",
+              color: "#000",
+              font: { weight: "bold", size: 12 }
+            }
+          }
+        }
+      });
+      // Limpa sugestão quando gerar novo gráfico
+      document.getElementById('sugestao').textContent = '';
+    }
+
+    function resetCounters() {
+      contadores.fill(0);
+      countCells.forEach(cell => cell.textContent = '0');
+      if (chartInstance) {
+        chartInstance.data.datasets[0].data = contadores;
+        chartInstance.update();
+      }
+      document.getElementById('sugestao').textContent = '';
+    }
+
+    function sugestaoTatica() {
+      if (!chartInstance) return alert('Gere o gráfico primeiro para obter sugestão.');
+      // Identifica índice de maior erro
+      const maxErr = Math.max(...contadores);
+      if (maxErr === 0) {
+        document.getElementById('sugestao').textContent = 'Não há erros registrados para sugerir tática.';
+        return;
+      }
+      const idxMax = contadores.indexOf(maxErr);
+      const fundamento = fundamentos[idxMax];
+      // Sugestão genérica baseada no fundamento
+      const texto = `O adversário cometeu mais erros em "${fundamento}" (${maxErr} vezes). Sugiro explorar este fundamento com ataques direcionados para obter vantagem.`;
+      document.getElementById('sugestao').textContent = texto;
+    }
+
+    async function gerarPDF() {
+      if (!chartInstance) return alert("Gere o gráfico antes de salvar em PDF.");
+      const canvas = document.getElementById("graficoErros");
+      const imgData = canvas.toDataURL("image/png");
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF({ orientation: "landscape" });
+      const nome = document.getElementById("nomeAtleta").value || "Atleta";
+      const clube = document.getElementById("clubeCidade").value || "Clube_Cidade";
+      doc.setFontSize(16);
+      doc.text(`Atleta: ${nome}`, 10, 20);
+      doc.text(`Clube/Cidade: ${clube}`, 10, 30);
+      doc.addImage(imgData, "PNG", 10, 40, 280, 140);
+      doc.save(`Scout_Erros_${nome.replace(/\s+/g, "_")}.pdf`);
+    }
+  </script>
+</body>
+</html>
