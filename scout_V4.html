@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Scout de Erros - Tênis de Mesa</title>
+  <!-- Chart.js e plugin de data labels -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
+  <!-- jsPDF para exportar PDF -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <style>
+    /* Marca d'água no fundo */
+    body::before {
+      content: "";
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: url('logo gtt.jpg') center center no-repeat;
+      background-size: 300px;
+      opacity: 0.1;
+      z-index: -1;
+    }
+    body {
+      font-family: Arial, sans-serif;
+      text-align: center;
+      margin: 20px;
+    }
+    table {
+      width: 100%;
+      max-width: 700px;
+      margin: 20px auto;
+      border-collapse: collapse;
+    }
+    th, td {
+      border: 1px solid #333;
+      padding: 8px;
+      text-align: center;
+    }
+    td.contador {
+      cursor: pointer;
+      background-color: #f9f9f9;
+      font-size: 18px;
+    }
+    button {
+      margin: 8px;
+      padding: 8px 16px;
+      font-size: 14px;
+    }
+    #graficoContainer {
+      width: 100%;
+      max-width: 700px;
+      margin: 30px auto;
+    }
+    input[type="text"] {
+      padding: 8px;
+      width: calc(50% - 40px);
+      max-width: 300px;
+      margin: 8px;
+    }
+    #sugestao {
+      margin-top: 12px;
+      font-size: 16px;
+      font-weight: bold;
+      color: #333;
+      white-space: pre-wrap;
+    }
+  </style>
+</head>
+<body>
+  <h2>Scout de Erros - Finalizações</h2>
+  <div>
+    <input type="text" id="nomeAtleta" placeholder="Nome do Atleta">
+    <input type="text" id="clubeCidade" placeholder="Clube ou Cidade">
+  </div>
+  <button onclick="resetCounters()">Redefinir Contadores</button>
+  <table>
+    <thead>
+      <tr>
+        <th>Fundamentos</th>
+        <th>Contador de Erros</th>
+        <th>Desfazer</th>
+      </tr>
+    </thead>
+    <tbody id="tabelaFundamentos"></tbody>
+  </table>
+  <button onclick="gerarGrafico()">Finalizar e Gerar Gráfico</button>
+  <button onclick="gerarPDF()">Salvar em PDF</button>
+  <div id="graficoContainer">
+    <canvas id="graficoErros"></canvas>
+    <div>
+      <button onclick="sugestaoTatica()">Gerar Sugestão Tática</button>
+    </div>
+    <div id="sugestao">Clique em "Gerar Sugestão Tática" para obter estratégia baseada em IA.</div>
+  </div>
+  <script>
+    // Registra plugin de data labels
+    Chart.register(ChartDataLabels);
+
+    const fundamentos = [
+      "SAQUE", "RECEPÇÃO COZINHADA", "RECEPÇÃO CHIQUITA", "RECEPÇÃO HARAL FH",
+      "ATAQUE FH DRIVE", "ATAQUE FH TOPSPIN", "ATAQUE BH DRIVE", "ATAQUE BH TOPSPIN",
+      "DEFESA/BLOQUEIO", "DEFESA/KATO", "COZINHADA", "SMASH", "RALLY"
+    ];
+    const contadores = Array(fundamentos.length).fill(0);
+    const countCells = [];
+    const tabela = document.getElementById("tabelaFundamentos");
+
+    // Monta tabela
+    fundamentos.forEach((fund, idx) => {
+      const row = tabela.insertRow();
+      row.insertCell().textContent = fund;
+      const countCell = row.insertCell();
+      countCell.className = "contador";
+      countCell.textContent = "0";
+      countCell.onclick = () => {
+        contadores[idx]++;
+        countCell.textContent = contadores[idx];
+      };
+      countCells.push(countCell);
+      const undoCell = row.insertCell();
+      const btn = document.createElement("button");
+      btn.textContent = "Desfazer";
+      btn.onclick = () => {
+        if (contadores[idx] > 0) {
+          contadores[idx]--;
+          countCell.textContent = contadores[idx];
+        }
+      };
+      undoCell.appendChild(btn);
+    });
+
+    let chartInstance;
+    function gerarGrafico() {
+      const ctx = document.getElementById("graficoErros").getContext("2d");
+      if (chartInstance) chartInstance.destroy();
+      chartInstance = new Chart(ctx, {
+        type: "bar",
+        data: {
+          labels: fundamentos,
+          datasets: [{
+            label: "Erros",
+            data: contadores,
+            backgroundColor: fundamentos.map((_, i) =>
+              `hsl(${i * 360 / fundamentos.length}, 70%, 60%)`
+            )
+          }]
+        },
+        options: {
+          responsive: true,
+          scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } },
+          plugins: {
+            legend: { display: false },
+            title: { display: true, text: "Distribuição de Erros por Fundamento" },
+            datalabels: { anchor: "end", align: "top", formatter: v => v>0?v:'', color: '#000', font: { weight: 'bold', size: 12 } }
+          }
+        }
+      });
+      document.getElementById('sugestao').textContent = '';
+    }
+
+    function resetCounters() {
+      contadores.fill(0);
+      countCells.forEach(c => c.textContent = '0');
+      if (chartInstance) {
+        chartInstance.data.datasets[0].data = contadores;
+        chartInstance.update();
+      }
+      document.getElementById('sugestao').textContent = 'Clique em "Gerar Sugestão Tática" para obter estratégia baseada em IA.';
+    }
+
+    async function sugestaoTatica() {
+      if (!chartInstance) return alert('Gere o gráfico primeiro.');
+      const maxErr = Math.max(...contadores);
+      if (maxErr === 0) {
+        document.getElementById('sugestao').textContent = 'Não há erros registrados para sugerir tática.';
+        return;
+      }
+      // Prepara dados para IA
+      const erros = fundamentos.map((f, i) => `${f}: ${contadores[i]}`).join(', ');
+      const payload = {
+        model: 'gpt-3.5-turbo',
+        messages: [
+          { role: 'system', content: 'Você é um treinador de tênis de mesa experiente. Baseado nos dados de erros do adversário, sugira uma estratégia tática concisa.' },
+          { role: 'user', content: `Mapa de erros do adversário: ${erros}. Sugira uma tática.` }
+        ],
+        max_tokens: 150
+      };
+      document.getElementById('sugestao').textContent = 'Gerando sugestão...';
+      try {
+        const response = await fetch('https://api.openai.com/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer SEU_API_KEY'
+          },
+          body: JSON.stringify(payload)
+        });
+        const data = await response.json();
+        const text = data.choices[0].message.content.trim();
+        document.getElementById('sugestao').textContent = text;
+      } catch (err) {
+        document.getElementById('sugestao').textContent = 'Erro ao gerar sugestão.';
+        console.error(err);
+      }
+    }
+
+    async function gerarPDF() {
+      if (!chartInstance) return alert('Gere o gráfico antes de salvar.');
+      const canvas = document.getElementById('graficoErros');
+      const imgData = canvas.toDataURL('image/png');
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF({ orientation: 'landscape' });
+      const nome = document.getElementById('nomeAtleta').value || 'Atleta';
+      const clube = document.getElementById('clubeCidade').value || 'Clube_Cidade';
+      doc.setFontSize(16);
+      doc.text(`Atleta: ${nome}`, 10, 20);
+      doc.text(`Clube/Cidade: ${clube}`, 10, 30);
+      doc.addImage(imgData, 'PNG', 10, 40, 280, 140);
+      doc.save(`Scout_Erros_${nome.replace(/\s+/g, '_')}.pdf`);
+    }
+  </script>
+</body>
+</html>
